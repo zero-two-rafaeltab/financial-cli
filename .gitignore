@@ -1,0 +1,11 @@
+node_modules/
+coverage/
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+session.json
+config.json
