@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Deferred, Effect, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import {
 	AuthError,
@@ -29,6 +29,7 @@ const expiry = "2098-05-06T07:08:09+02:00";
 function fixture(
 	options: {
 		banks?: readonly Bank[];
+		initialSessions?: readonly StoredSession[];
 		wait?: Effect.Effect<string, AuthError>;
 		exchange?: Effect.Effect<AuthorizedSession, AuthError>;
 		remote?: Effect.Effect<RemoteSessionStatus, AuthError>;
@@ -37,7 +38,7 @@ function fixture(
 ) {
 	let held = false;
 	let callbackClosed = true;
-	let records: readonly StoredSession[] = [];
+	let records: readonly StoredSession[] = options.initialSessions ?? [];
 	let authorizations = 0;
 	const requests: AuthorizationAccess[] = [];
 	const provider: BankingProvider = {
@@ -377,7 +378,7 @@ test("interrupting a TypeScript login preserves prior sessions and releases its 
 		{ signal: controller.signal },
 	);
 	try {
-		await waiting;
+		await boundedReadiness(waiting, completed);
 		controller.abort();
 		await expect(completed).rejects.toThrow();
 		expect(await Effect.runPromise(f.store.sessions())).toEqual([old]);
@@ -387,6 +388,114 @@ test("interrupting a TypeScript login preserves prior sessions and releases its 
 		await completed.catch(() => {});
 	}
 });
+
+test("failed capability persistence preserves both bank records after exchange", async () => {
+	const old = {
+		sessionId: "SYNTHETIC-OLD-SESSION",
+		validUntil: expiry,
+		identity: "synthetic-identity",
+		bank: bank.name,
+		country: bank.country,
+	};
+	const other = { ...old, bank: "Other Synthetic Bank" };
+	const f = fixture({
+		initialSessions: [old, other],
+		saveError: new AuthError({
+			kind: "Storage",
+			message: "Synthetic write failure",
+		}),
+	});
+	const result = await Effect.runPromise(
+		login({ ...input, transactionConsent: "consent" }).pipe(
+			Effect.provide(f.services),
+			Effect.match({
+				onSuccess: () => "saved",
+				onFailure: (error) => error.kind,
+			}),
+		),
+	);
+	expect(result).toBe("Storage");
+	expect(await Effect.runPromise(f.store.sessions())).toEqual([old, other]);
+	expect(f.released()).toBe(true);
+});
+
+test("whole-attempt capability timeout preserves both banks and releases its scope", async () => {
+	const old = {
+		sessionId: "SYNTHETIC-OLD-SESSION",
+		validUntil: expiry,
+		identity: "synthetic-identity",
+		bank: bank.name,
+		country: bank.country,
+	};
+	const other = { ...old, bank: "Other Synthetic Bank" };
+	const result = await Effect.runPromise(
+		Effect.scoped(
+			Effect.gen(function* () {
+				yield* TestClock.setTime(1767225600000);
+				const ready = yield* Deferred.make<void>();
+				const f = fixture({
+					initialSessions: [old, other],
+					wait: Effect.andThen(
+						Deferred.succeed(ready, undefined),
+						Effect.never,
+					),
+				});
+				const fiber = yield* Effect.forkChild(
+					login({ ...input, transactionConsent: "consent" }).pipe(
+						Effect.provide(f.services),
+						Effect.match({
+							onSuccess: () => "saved",
+							onFailure: (error) => error.kind,
+						}),
+					),
+				);
+				yield* Effect.raceFirst(
+					Deferred.await(ready),
+					Fiber.join(fiber).pipe(
+						Effect.flatMap(() =>
+							Effect.die(
+								new Error("Login completed before callback readiness"),
+							),
+						),
+					),
+				);
+				yield* TestClock.adjust("1 second");
+				return {
+					kind: yield* Fiber.join(fiber),
+					records: yield* f.store.sessions(),
+					released: f.released(),
+				};
+			}),
+		).pipe(Effect.provide(TestClock.layer())),
+		{ signal: AbortSignal.timeout(3000) },
+	);
+	expect(result.kind).toBe("Timeout");
+	expect(result.records).toEqual([old, other]);
+	expect(result.released).toBe(true);
+});
+
+async function boundedReadiness<T>(
+	ready: Promise<T>,
+	completed: Promise<unknown>,
+): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	try {
+		return await Promise.race([
+			ready,
+			completed.then(() => {
+				throw new Error("Login completed before callback readiness");
+			}),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(
+					() => reject(new Error("No callback readiness")),
+					3000,
+				);
+			}),
+		]);
+	} finally {
+		clearTimeout(timer);
+	}
+}
 
 test("invalid connector maximums cannot authorize or replace prior records", async () => {
 	for (const maximumConsentValidity of [
