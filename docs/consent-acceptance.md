@@ -1,6 +1,6 @@
 # Consent acceptance for issue #16
 
-Automated synthetic checks cannot establish real bank consent. Issue #16 stays open until owner-assisted acceptance verifies both ING NL and the selected personal Revolut EU connector. Historical 180-day announcements are an expectation, not a constant: [ING NL](https://enablebanking.com/blog/2024/03/11/changelog-february-2024), [Revolut EU](https://enablebanking.com/blog/2024/12/05/changelog-november-2024). The current [metadata and access contract](https://enablebanking.com/docs/api/reference/#access) governs each attempt.
+Automated synthetic checks cannot establish real bank consent. Owner-assisted acceptance was verified on 2026-10-03 for ING NL and the selected personal Revolut NL connector. Issue #16 remains open for the required GitHub approval and merge. Historical 180-day announcements are an expectation, not a constant: [ING NL](https://enablebanking.com/blog/2024/03/11/changelog-february-2024), [Revolut EU](https://enablebanking.com/blog/2024/12/05/changelog-november-2024). The current [metadata and access contract](https://enablebanking.com/docs/api/reference/#access) governs each attempt.
 
 ## Owner-assisted steps
 
@@ -13,16 +13,20 @@ Automated synthetic checks cannot establish real bank consent. Issue #16 stays o
 7. Run `auth status` separately for each connector. Record its safe expiry/source, verification, state and renewal indication. Verify the other bank's record is retained. If a bank explicitly refuses transactions, the CLI must not replace the old local record.
 8. Confirm callback/listener and lock cleanup. Use an owner-agreed cancellation/denial check if needed; avoid unnecessary live authorization attempts that may invalidate bank sessions. Automated tests already exercise denial, provider/storage failure, timeout and interruption preservation.
 
-The owner runs production flows locally and provides only these sanitized outcomes. The agent must not read production keys, saved session IDs, authorization links, callback queries or provider response bodies. No transaction retrieval is part of this acceptance.
+Production flows run through the existing CLI on explicit owner instruction; the owner alone completes bank consent. The CLI uses existing signing material and credential storage internally. The agent must not inspect production key/session files or disclose keys, saved session IDs, callback queries or raw provider responses. Share authorization links only with the owner when explicitly requested, never in public evidence. No transaction retrieval is part of this acceptance.
 
 ## Acceptance record
 
 | Check | ING NL | Revolut EU personal connector |
 | --- | --- | --- |
-| Current connector identity and maximum verified | Pending owner flow | Pending owner flow |
-| Informed owner consent; transactions requested, balances false | Pending owner flow | Pending owner flow |
-| Returned expiry and actual duration verified | Pending owner flow | Pending owner flow |
-| Returned permission flags or explicit omission recorded | Pending owner flow | Pending owner flow |
-| Provider-verified status and cleanup | Pending owner flow | Pending owner flow |
+| Current connector identity and maximum verified | ING / NL; 15,552,000 seconds | Revolut / NL; 15,552,000 seconds |
+| Informed owner consent; transactions requested, balances false | Owner-assisted fresh consent succeeded; returned transactions=true, balances=false | Owner-assisted fresh consent succeeded; returned transactions=true, balances=false |
+| Returned expiry and actual duration verified | 180 days; exact provider value preserved, same expiry instant as request | 180 days; exact provider value preserved, same expiry instant as request |
+| Returned permission flags or explicit omission recorded | Explicit transactions=true, balances=false | Explicit transactions=true, balances=false |
+| Provider-verified status and cleanup | authorized; provider verification; renewal not required; CLI exited 0 and next command acquired locks | authorized; provider verification; renewal not required; CLI exited 0 and subsequent status acquired locks |
+
+Both flows used the final reviewed implementation after PR CI passed. The owner explicitly requested that the agent start the CLI and supply each browser authorization link, then completed the bank flows personally. Before Revolut renewal, safe status showed its prior authorized authentication-only session with transactions=false while the renewed ING record remained present. The final aggregate status retained both banks and reported transactions=true, balances=false for each. No account or transaction retrieval occurred.
+
+Absolute session timestamps, authorization links, callback queries, session IDs, keys and private deployment settings are excluded from this public record. Only sanitized connector metadata, durations, rights and status are recorded. These current 180-day results do not become implementation constants or guarantees against earlier revocation.
 
 Signing JWT lifetime remains 300 seconds. Bank SCA and consent renewal are provider-controlled; [expired sessions require fresh authorization](https://enablebanking.com/docs/faq/#how-should-re-authorisation-be-performed-and-how-to-match-accounts-across-sessions). No refresh workaround, scraping or bank-password storage is introduced. Mark required live checks complete only after actual safe evidence, and do not close #16 while required acceptance is pending.
