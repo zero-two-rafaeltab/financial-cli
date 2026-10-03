@@ -21,6 +21,7 @@ import {
 	attempt,
 	ConfigSchema,
 	decode,
+	failure,
 	SessionSchema,
 	validateConfig,
 } from "../shared";
@@ -158,13 +159,13 @@ export function localStore(locations: StorageLocations): CredentialStore {
 			for (const dir of [
 				...new Set([resolve(configDir), resolve(stateDir)]),
 			].sort()) {
+				const accessMessage =
+					"Unable to access authentication storage safely. Check config/state paths, ownership and permissions, including their parent directories.";
+				yield* attempt("Storage", accessMessage, () => directory(dir));
+				const lock = join(dir, ".auth-lock");
 				yield* Effect.acquireRelease(
-					attempt(
-						"Storage",
-						"Authentication storage is locked. Retry after the active command finishes; if it crashed, verify no auth command is running before removing .auth-lock from the config or state directory.",
-						() => {
-							directory(dir);
-							const lock = join(dir, ".auth-lock");
+					Effect.try({
+						try: () => {
 							const fd = openSync(
 								lock,
 								constants.O_WRONLY |
@@ -175,7 +176,25 @@ export function localStore(locations: StorageLocations): CredentialStore {
 							);
 							return { fd, lock };
 						},
-					),
+						catch: (error) => {
+							if (
+								error instanceof Error &&
+								"code" in error &&
+								error.code === "EEXIST"
+							) {
+								try {
+									if (lstatSync(lock).isFile())
+										return failure(
+											"Storage",
+											"Authentication storage is locked. Retry after the active command finishes; if it crashed, verify no auth command is running before removing .auth-lock from the config or state directory.",
+										);
+								} catch {
+									// Report only the safe access diagnostic, never filesystem causes.
+								}
+							}
+							return failure("Storage", accessMessage);
+						},
+					}),
 					({ fd, lock }) =>
 						Effect.sync(() => {
 							try {
