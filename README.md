@@ -26,11 +26,37 @@ Configure the application's assigned ID and its exact registered HTTPS callback 
 ```sh
 bun run start auth configure \
   --application-id YOUR_APPLICATION_UUID \
-  --callback-url https://YOUR_PRIVATE_HOST/auth/callback \
+  --callback-url https://YOUR_PRIVATE_HOST/financial-cli/callback \
   --port 8787
 ```
 
 The callback listener binds only to `127.0.0.1`. Forward the registered path to that listener through a private HTTPS reverse proxy such as Tailscale Serve. The authorizing browser must have access to the private endpoint, including on a phone if the bank returns authorization there. Public port forwarding is not required for a browser redirect. Do not replace unrelated existing proxy routes.
+
+### Private HTTPS callback setup and verification
+
+Inspect `tailscale serve status --json` before making changes. If the exact callback path already proxies to the configured loopback port and path, keep it. Otherwise, save the current configuration outside the checkout in an owner-only directory, then add only the dedicated route. These example values must match the registered callback URL and `auth configure` settings:
+
+```sh
+umask 077
+route_dir="$(mktemp -d "$HOME/.financial-cli-serve.XXXXXX")"
+tailscale serve status --json > "$route_dir/before.json"
+callback_path=/financial-cli/callback
+callback_port=8787
+https_port=443
+tailscale serve --bg --https="$https_port" --set-path="$callback_path" \
+  "http://127.0.0.1:$callback_port$callback_path"
+tailscale serve status --json > "$route_dir/after.json"
+```
+
+Read back both snapshots and confirm that every unrelated handler, HTTPS port, and exposure mode is unchanged. Include the callback path in the proxy target so the CLI receives the expected path. Keep deployment hostnames and snapshots local. Use private Serve only; do not enable Funnel or router port forwarding. See the [Tailscale Serve command reference](https://tailscale.com/docs/reference/tailscale-cli/serve) for route flags and removal.
+
+Keep required privacy and terms pages in a separately managed loopback service with dedicated private HTTPS routes. Their files, service definition, and deployment configuration belong outside this repository. Verify that the service remains enabled and responds while no CLI login is running; the callback listener does not host these pages.
+
+Verify the exact HTTPS URL with normal certificate validation. While a login is waiting, opening its callback URL without query parameters should display `Invalid callback.` (HTTP 400). Ask the owner to check that response in browsers on both desktop and phone with Tailscale connected, and to check the policy pages without certificate errors. A successful request from the deployment host does not establish access from either device.
+
+For a synthetic verification, use disposable keys, application configuration, and state in explicit owner-only XDG roots outside the checkout. Set `FINANCIAL_CLI_TEST_MODE=1` and `FINANCIAL_CLI_TEST_API_URL` to a local loopback provider fixture, and configure the same registered HTTPS callback URL and loopback port. Run the actual `auth login` command against that fixture. Have the fixture capture the authorization request in memory, then send a mismatched-state callback through the HTTPS route: expect HTTP 400, no exchange, and no saved session. Send a valid callback with the captured state and a disposable code: expect the complete HTTP 200 response, exactly one fixture exchange, a saved synthetic session, successful fixture-backed `auth status`, and CLI termination. Verify that the loopback port and authentication locks are released. Never send synthetic codes to Enable Banking or use real bank sessions for this check. Record only sanitized outcomes, then stop the fixture and remove its disposable credentials.
+
+### Login and consent renewal
 
 ```sh
 bun run start auth login --country NL
@@ -41,6 +67,23 @@ bun run start auth status --country NL --bank EXACT_PROVIDER_BANK_NAME
 Login displays available banks for selection and prints a browser authorization link. Open that link and complete the provider and bank consent flow. Do not paste callback URLs, authorization codes, or session identifiers into chat or issues. Keep terminal output containing an authorization link private.
 
 A synthetic authorization test is not proof that a live account is connected. Validate registration, exact callback compatibility, linked-account availability, and the saved session with a real consent flow before relying on this CLI.
+
+The current login requests validity for at most 24 hours, further limited by the bank's advertised maximum; the provider's returned expiry governs the saved session. See Enable Banking's [access validity contract](https://enablebanking.com/docs/api/reference/#access). There is no automatic consent renewal. Use `auth status` to check the relevant bank, then run `auth login --country CC --bank EXACT_PROVIDER_BANK_NAME` and complete fresh consent when the session is expired, revoked, cancelled, closed, invalid, or missing. If status reports `provider-unavailable`, validity was not verified; check provider access before deciding to renew. Keep the registered callback and existing signing key. Renewal does not require `auth keygen` or application re-registration. Only a successful login replaces the matching bank's saved session; failed attempts preserve it and other banks' sessions.
+
+### Callback and deployment cleanup
+
+The callback listener exists only during `auth login`. Success, denial, timeout, or interruption releases it and its locks. Cancel a waiting login with Ctrl-C and verify the configured loopback port is free. Leave the private Serve route in place for the next login; an HTTP 502 while the listener is stopped is expected and does not imply that the route is missing. Policy pages remain available independently.
+
+When retiring this deployment, stop any active login and remove only its dedicated callback route. Set the example path and HTTPS port to the values used during setup, even in a fresh shell:
+
+```sh
+callback_path=/financial-cli/callback
+https_port=443
+tailscale serve --bg --https="$https_port" --set-path="$callback_path" off
+tailscale serve status --json
+```
+
+Compare the final configuration with the saved snapshot and preserve unrelated routes and exposure modes. Do not use `tailscale serve reset`. Retire policy routes and their local service only when no registered application still needs them. Remove verification snapshots and disposable fixture storage after review. Remove real local credentials only as an intentional retirement step; deleting local session files does not revoke provider or bank consent, which must be withdrawn through their supported controls.
 
 ## Local data and security
 
