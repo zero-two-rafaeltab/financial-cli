@@ -7,9 +7,10 @@
 		"start": "bun src/cli.ts",
 		"test": "bun test",
 		"typecheck": "tsc --noEmit",
-		"lint": "biome check src tests package.json tsconfig.json && bun src/architecture.ts",
-		"format": "biome check --write src tests package.json tsconfig.json",
-		"check": "bun run typecheck && bun run lint && bun test"
+		"lint": "biome check src tests examples package.json tsconfig.json && bun src/architecture.ts",
+		"format": "biome check --write src tests examples package.json tsconfig.json",
+		"check": "bun run typecheck && bun run lint && bun test",
+		"example:transactions": "bun examples/synthetic-transactions.ts"
 	},
 	"dependencies": {
 		"effect": "4.0.0"

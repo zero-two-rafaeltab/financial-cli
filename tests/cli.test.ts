@@ -262,11 +262,14 @@ function fixture() {
 	};
 }
 
-test("CLI help exposes only authentication commands", async () => {
+test("CLI help exposes authentication and local transaction commands", async () => {
 	const result = await run(["--help"], {});
 	expect(result.exit).toBe(0);
 	for (const command of ["keygen", "configure", "login", "status"])
 		expect(result.out).toContain(`auth ${command}`);
+	for (const command of ["sync", "query", "accounts"])
+		expect(result.out).toContain(`transactions ${command}`);
+	expect(result.out).not.toContain("eval");
 	expect(result.out).not.toContain("auth transactions");
 	expect(result.out).toContain("--transactions consent");
 	expect(result.out).toContain("read-only transaction access");

@@ -9,12 +9,25 @@ import { type AuthError, attempt, decode, failure } from "./shared";
 import { stateLayer } from "./state";
 import { localStore, storeLayer } from "./storage";
 
-const help = `financial-cli — local account-information authentication
+import { runTransactions } from "./transaction-cli";
+
+const help = `financial-cli — private local account information
 
   auth keygen                         Create a local RSA key; print public certificate only
   auth configure --application-id ID --callback-url HTTPS_URL [--port 8787]
   auth login --transactions consent [--country CC --bank NAME] [--timeout 180]
   auth status [--country CC --bank NAME] Validate saved sessions with Enable Banking
+
+  transactions sync [--country CC --bank NAME --account KEY] [--from YYYY-MM-DD --to YYYY-MM-DD] [--overlap-days 7]
+  transactions accounts [--country CC --bank NAME]
+  transactions query [--country CC --bank NAME --account KEY] [--from YYYY-MM-DD --to YYYY-MM-DD]
+                     [--status booked|pending|cancelled|hold|other|rejected|scheduled]
+                     [--currency EUR --direction debit|credit --text TEXT]
+                     [--date-field bookingDate|valueDate|transactionDate --limit 1000 --offset 0]
+
+Transaction queries are offline sanitized counts/freshness summaries. Use the typed
+Effect API for private transaction results. Sync never renews consent. Initial and
+new-authorization history requests are provider-limited; subsequent runs overlap.
 
 Without --bank, select from Enable Banking's /aspsps list in the terminal.
 --transactions consent acknowledges read-only transaction access for local reporting.
@@ -30,6 +43,7 @@ roots, test-only configuration and a loopback FINANCIAL_CLI_TEST_API_URL.
 `;
 const args = process.argv.slice(2);
 if (args.includes("--help") || args.length === 0) console.log(help);
+else if (args[0] === "transactions") await runTransactions(args.slice(1));
 else {
 	const controller = new AbortController();
 	const cancel = () => controller.abort();

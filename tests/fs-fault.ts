@@ -18,6 +18,15 @@ mock.module("node:fs", () => ({
 		}
 		return real.writeFileSync(fd, data, options);
 	},
+	rmSync: (path: fs.PathLike, options?: fs.RmOptions) => {
+		if (
+			phase === "post-rename-cleanup" &&
+			String(path).includes(".transactions.json.") &&
+			!real.existsSync(path)
+		)
+			throw new Error("Injected post-publication cleanup failure");
+		return real.rmSync(path, options);
+	},
 	fsyncSync: (fd: number) => {
 		if (phase === "fsync") throw new Error("Injected fsync failure");
 		if (phase === "slow-fsync")
