@@ -24,11 +24,11 @@ Each behavior slice ran its focused test before and after implementation. Observ
 
 Green refactoring moved the implementation to the canonical capability directory, preserved the compatibility entry point, and used a controlled Effect clock to assert the exact 110-day synthetic request. This duration deliberately differs from the historical 180-day announcements. Returned expiry is independently supplied, including an unchanged timezone offset.
 
-The retained executable tests verify the unchanged 300-second signing JWT, personal AIS discovery, explicit transaction access with balances false, multiple-bank retention, state/replay rejection, whole-attempt deadlines, provider/storage failure, interruption, secure storage, exact exit mappings and redaction. Capability tests additionally verify typed denial/failure results, invalid metadata bounds, transaction-grant refusal, safe status and interruption cleanup through public Effect operations.
+The retained executable tests verify the unchanged 300-second signing JWT, personal AIS discovery, explicit transaction access with balances false, multiple-bank retention, state/replay rejection, whole-attempt deadlines, provider/storage failure, interruption, secure storage, exact exit mappings and redaction. Capability tests additionally verify typed denial/failure results, invalid metadata bounds, transaction-grant refusal, safe status, failed persistence, whole-attempt timeout and interruption cleanup through public Effect operations.
 
 ## Complete gate
 
-`bun install --frozen-lockfile`, configured `bun run format`, `git diff --check` and local documentation-link validation passed. `bun run check` passed TypeScript, Biome, architecture enforcement and all **60 tests** across seven files (548 assertions). GitHub's required `check` job is verified on the published PR separately; local checks alone are not CI evidence.
+`bun install --frozen-lockfile`, configured `bun run format`, `git diff --check` and local documentation-link validation passed. `bun run check` passed TypeScript, Biome, architecture enforcement and all **62 tests** across seven files (554 assertions). GitHub's required `check` job is verified on the published PR separately; local checks alone are not CI evidence.
 
 ## Executable demonstration
 
@@ -54,3 +54,5 @@ LT Synthetic Revolut: authorized
 ```
 
 Maintained reproduction coverage is in `tests/flow.test.ts` (actual subprocesses and loopback HTTP), `tests/authentication.test.ts` (public capability and controlled ports) and `tests/provider.test.ts` (provider wire validation). This demonstration is not live acceptance. [Both real bank checks](consent-acceptance.md) remain owner-assisted requirements, and issue #16 must remain open until verified.
+
+The initial Standards review identified missing direct capability tests for persistence failure and timeout, plus an unbounded interruption-readiness wait. Those findings were addressed with controlled-port failure and virtual-clock timeout tests, bounded readiness, and the final full gate above. The Spec review found no implementation gaps. Both axes re-review the final committed diff before publication.
