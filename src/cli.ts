@@ -19,8 +19,9 @@ const help = `financial-cli — local account-information authentication
 Without --bank, select from Enable Banking's /aspsps list in the terminal.
 Register the exact HTTPS callback URL and forward its path with Tailscale Serve
 to the configured loopback listener port. Credentials remain outside checkout
-in XDG_CONFIG_HOME/financial-cli and XDG_STATE_HOME/financial-cli (defaults:
-~/.config and ~/.local/state). HTTPS callback required; no hostname assumed.
+in ~/.financial-cli/config/financial-cli and ~/.financial-cli/state/financial-cli.
+Override either root with XDG_CONFIG_HOME or XDG_STATE_HOME; financial-cli is
+appended to each root. HTTPS callback required; no hostname assumed.
 Endpoint overrides require FINANCIAL_CLI_TEST_MODE=1, isolated explicit XDG
 roots, test-only configuration and a loopback FINANCIAL_CLI_TEST_API_URL.
 `;
@@ -83,8 +84,10 @@ else {
 			},
 		);
 		const credentials = localStore({
-			configHome: env.XDG_CONFIG_HOME ?? resolve(homedir(), ".config"),
-			stateHome: env.XDG_STATE_HOME ?? resolve(homedir(), ".local/state"),
+			configHome:
+				env.XDG_CONFIG_HOME ?? resolve(homedir(), ".financial-cli/config"),
+			stateHome:
+				env.XDG_STATE_HOME ?? resolve(homedir(), ".financial-cli/state"),
 			checkout: resolve(import.meta.dir, ".."),
 		});
 		const storage = storeLayer(credentials);
