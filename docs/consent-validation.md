@@ -1,6 +1,6 @@
 # Synthetic validation for #16
 
-Executed on 2026-10-03 using Bun 1.4.2, synthetic credentials, loopback provider fixtures and isolated private storage. No authenticated live provider calls or production credential reads were performed. The owner approved the capability/CLI/HTTP/storage seams before new tests.
+Executed on 2026-10-03 using Bun 1.4.2, synthetic credentials, loopback provider fixtures and isolated private storage. Synthetic implementation validation made no authenticated live provider calls and inspected no production credential contents. The owner approved the capability/CLI/HTTP/storage seams before new tests.
 
 ## Red-green evidence
 
@@ -53,6 +53,10 @@ LT Synthetic Revolut: authorized
   Provider-reported transaction access: true; balances: false (provider)
 ```
 
-Maintained reproduction coverage is in `tests/flow.test.ts` (actual subprocesses and loopback HTTP), `tests/authentication.test.ts` (public capability and controlled ports) and `tests/provider.test.ts` (provider wire validation). This demonstration is not live acceptance. [Both real bank checks](consent-acceptance.md) remain owner-assisted requirements, and issue #16 must remain open until verified.
+Maintained reproduction coverage is in `tests/flow.test.ts` (actual subprocesses and loopback HTTP), `tests/authentication.test.ts` (public capability and controlled ports) and `tests/provider.test.ts` (provider wire validation). This demonstration is not live acceptance. [Both real bank checks](consent-acceptance.md) were subsequently completed with the owner after passing PR checks. Issue #16 remains open for required approval and merge.
 
 The initial Standards review identified missing direct capability tests for persistence failure and timeout, plus an unbounded interruption-readiness wait. Those findings were addressed with controlled-port failure and virtual-clock timeout tests, bounded readiness, and the final full gate above. The Spec review found no implementation gaps. Both axes re-review the final committed diff before publication.
+
+## Subsequent live acceptance
+
+After passing PR CI, the owner explicitly requested CLI-assisted browser links and completed both bank consent flows. Current personal AIS metadata for ING NL and Revolut NL advertised 15,552,000 seconds each. Both returned expiry instants matched the requested 180-day duration, with transactions=true and balances=false. Actual CLI status subsequently verified both as authorized, with renewal not required, while retaining both records. CLI exits and subsequent exclusive status operations verified scope/lock cleanup. The signing key was reused, no key/session contents were inspected, no transaction retrieval occurred, and sensitive links/queries/identifiers are excluded from public evidence. See the sanitized [acceptance record](consent-acceptance.md).

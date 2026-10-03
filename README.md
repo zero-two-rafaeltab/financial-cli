@@ -78,7 +78,7 @@ The application signing JWT still lasts 300 seconds and authenticates each API r
 
 Renew with `auth login --transactions consent --country CC --bank EXACT_PROVIDER_BANK_NAME`. Keep the registered callback and existing signing key; renewal requires neither key generation nor application re-registration. Only successful fresh consent replaces the matching bank's record. Denied, cancelled, failed, timed-out and interrupted attempts preserve all prior local sessions. An explicitly refused transaction grant also preserves them. Preservation of a local record cannot guarantee the bank still accepts it: some banks invalidate a previous session when a new authorization starts.
 
-For composable TypeScript/Effect use and the handoff to transaction collection (#17), see [the authentication capability API](docs/authentication-api.md). Owner-assisted checks for both real banks remain in [live acceptance](docs/consent-acceptance.md).
+For composable TypeScript/Effect use and the handoff to transaction collection (#17), see [the authentication capability API](docs/authentication-api.md). Owner-assisted acceptance for both real banks is recorded in [live acceptance](docs/consent-acceptance.md).
 
 ### Callback and deployment cleanup
 
