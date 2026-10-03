@@ -1,0 +1,22 @@
+{
+	"name": "financial-cli",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "bun src/cli.ts",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check src tests package.json tsconfig.json && bun src/architecture.ts",
+		"format": "biome check --write src tests package.json tsconfig.json",
+		"check": "bun run typecheck && bun run lint && bun test"
+	},
+	"dependencies": {
+		"effect": "4.0.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.15",
+		"@types/bun": "1.4.2",
+		"typescript": "7.0.2"
+	}
+}
