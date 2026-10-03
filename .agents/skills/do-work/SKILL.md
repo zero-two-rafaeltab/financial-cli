@@ -33,4 +33,6 @@ Exercise the changed CLI path using synthetic inputs and isolated storage. For l
 
 ## 5. Deliver within authorization
 
+After an authorized commit and before publication, invoke [code-review](../code-review/SKILL.md) with the assigned issue and an explicit fixed point recorded before the work (for example, the starting commit or PR base). Review the committed diff on separate Standards and Spec axes. If commits are prohibited, report the excluded uncommitted work instead of claiming it was reviewed. Address findings within the task's scope and rerun affected checks.
+
 Follow [validation and delivery](validation-and-delivery.md). Report changed files, verified behavior, actual checks, and blockers. Publish only when authorized. PR evidence is a redacted terminal transcript or automated CLI result, not a browser video.
