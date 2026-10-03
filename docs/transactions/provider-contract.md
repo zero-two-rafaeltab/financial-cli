@@ -8,4 +8,6 @@ Transaction collection uses `GET /accounts/{account_id}/transactions`. Date boun
 
 Amounts are decimal strings plus currency and a separate credit/debit indicator. Retain optional booking/value/transaction dates, parties, merchant category, reference, remittance and note. Preserve every documented status. `entry_reference` is immutable within an account; `transaction_id` is mutable and unsuitable for identity.
 
+Optional transaction fields may be returned as JSON null. The adapter treats null dates, party names and text as absent, and null remittance as an empty list. Required money, currency, direction and status remain validated; malformed non-null dates and numeric money are rejected.
+
 The adapter sends application-signed JWTs only to the configured provider. It sends no invented PSU headers, retrieves no balances, initiates no payments and never renews consent. Provider bodies and identifiers are excluded from diagnostics.

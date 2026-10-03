@@ -190,6 +190,100 @@ test("collection HTTP adapter resolves both synthetic banks, encodes cursors/ran
 	}
 });
 
+test("collection translates nullable optional transaction fields into absent local values", async () => {
+	const server = Bun.serve({
+		hostname: "127.0.0.1",
+		port: 0,
+		fetch(request) {
+			const path = new URL(request.url).pathname;
+			const uid = uids[0];
+			const primary = "synthetic-nullable-primary";
+			if (path.startsWith("/sessions/"))
+				return Response.json({
+					status: "AUTHORIZED",
+					access: { transactions: true, valid_until: "2099-01-01T00:00:00Z" },
+					aspsp: { name: "ING Synthetic", country: "NL" },
+					accounts: [uid],
+					accounts_data: [
+						{
+							uid,
+							identification_hash: primary,
+							identification_hashes: [primary],
+						},
+					],
+				});
+			if (path.endsWith("/details"))
+				return Response.json({
+					uid,
+					currency: "EUR",
+					cash_account_type: "CACC",
+					identification_hash: primary,
+					identification_hashes: [primary],
+				});
+			return Response.json({
+				transactions: [null, { name: null }].map((party) => ({
+					transaction_amount: { amount: "42.0100", currency: "EUR" },
+					credit_debit_indicator: "DBIT",
+					status: "PDNG",
+					entry_reference: null,
+					transaction_id: null,
+					booking_date: null,
+					value_date: null,
+					transaction_date: null,
+					creditor: party,
+					debtor: party,
+					merchant_category_code: null,
+					reference_number: null,
+					reference_number_schema: null,
+					remittance_information: null,
+					note: null,
+				})),
+				continuation_key: null,
+			});
+		},
+	});
+	try {
+		const source = enableBankingSource(
+			credentials(server.url.origin, syntheticSessions.slice(0, 1)),
+			{ testMode: true, baseUrl: server.url.origin },
+		);
+		const page = await Effect.runPromise(
+			Effect.scoped(
+				Effect.gen(function* () {
+					const feed = (yield* source.open({}))[0];
+					if (!feed) throw new Error("Missing synthetic feed");
+					const account = (yield* feed.accounts())[0];
+					if (!account) throw new Error("Missing synthetic account");
+					return yield* feed.page(account, { strategy: "longest" });
+				}),
+			),
+		);
+		expect(page.next).toBeUndefined();
+		expect(page.transactions).toHaveLength(2);
+		for (const transaction of page.transactions)
+			expect(transaction).toEqual({
+				amount: "42.0100",
+				currency: "EUR",
+				direction: "debit",
+				status: "pending",
+				bookingDate: undefined,
+				valueDate: undefined,
+				transactionDate: undefined,
+				creditor: undefined,
+				debtor: undefined,
+				merchantCategoryCode: undefined,
+				referenceNumber: undefined,
+				referenceScheme: undefined,
+				remittance: [],
+				note: undefined,
+				entryReference: undefined,
+				detailId: undefined,
+			});
+	} finally {
+		await server.stop(true);
+	}
+});
+
 test("collection refuses missing consent, invalid contracts and provider failures without leaking bodies", async () => {
 	let variant = "no-consent";
 	const marker = "SYNTHETIC-PRIVATE-PROVIDER-BODY";
