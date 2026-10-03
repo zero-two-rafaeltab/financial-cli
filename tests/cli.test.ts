@@ -6,6 +6,7 @@ import {
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
@@ -112,6 +113,111 @@ test("an existing auth lock reports contention but a non-file lock reports a pat
 		}
 	}
 });
+
+for (const firstRoot of ["config", "state"] as const) {
+	test(`second-lock contention releases the first ${firstRoot} lock and preserves the competing lock and sessions`, async () => {
+		const f = orderedLockFixture(firstRoot);
+		try {
+			const competing = "SYNTHETIC-COMPETING-LOCK";
+			writeFileSync(f.secondLock, competing, { mode: 0o600 });
+			const before = statSync(f.secondLock);
+			const result = await run(configureArgs, f.env);
+			expect(result.exit).toBe(1);
+			expect(result.out).toBe("");
+			expect(result.err).toContain("storage is locked");
+			expect(existsSync(f.firstLock)).toBe(false);
+			expect(readFileSync(f.secondLock, "utf8")).toBe(competing);
+			const after = statSync(f.secondLock);
+			expect([after.ino, after.mode, after.mtimeMs]).toEqual([
+				before.ino,
+				before.mode,
+				before.mtimeMs,
+			]);
+			expect(readFileSync(f.sessionsPath, "utf8")).toBe(f.sessions);
+
+			// Only the test owner removes the competing lock before retrying.
+			rmSync(f.secondLock);
+			expect(await run(configureArgs, f.env)).toEqual({
+				out: "Configuration saved.\n",
+				err: "",
+				exit: 0,
+			});
+			expect(existsSync(f.firstLock)).toBe(false);
+			expect(existsSync(f.secondLock)).toBe(false);
+			expect(readFileSync(f.sessionsPath, "utf8")).toBe(f.sessions);
+		} finally {
+			f.cleanup();
+		}
+	});
+
+	test(`later-directory validation releases the first ${firstRoot} lock and preserves sessions`, async () => {
+		const f = orderedLockFixture(firstRoot);
+		try {
+			chmodSync(f.secondDir, 0o770);
+			const result = await run(configureArgs, f.env);
+			expect(result.exit).toBe(1);
+			expect(result.out).toBe("");
+			expect(result.err).toContain(
+				"Unable to access authentication storage safely",
+			);
+			expect(result.err).not.toContain("storage is locked");
+			expect(existsSync(f.firstLock)).toBe(false);
+			expect(existsSync(f.secondLock)).toBe(false);
+			expect(readFileSync(f.sessionsPath, "utf8")).toBe(f.sessions);
+
+			chmodSync(f.secondDir, 0o700);
+			expect(await run(configureArgs, f.env)).toEqual({
+				out: "Configuration saved.\n",
+				err: "",
+				exit: 0,
+			});
+			expect(existsSync(f.firstLock)).toBe(false);
+			expect(existsSync(f.secondLock)).toBe(false);
+			expect(readFileSync(f.sessionsPath, "utf8")).toBe(f.sessions);
+		} finally {
+			f.cleanup();
+		}
+	});
+}
+
+function orderedLockFixture(firstRoot: "config" | "state") {
+	const f = fixture();
+	// One private parent and explicit names force acquisition before the failure.
+	const firstHome = join(f.home, "00-first");
+	const secondHome = join(f.home, "99-second");
+	const configHome = firstRoot === "config" ? firstHome : secondHome;
+	const stateHome = firstRoot === "state" ? firstHome : secondHome;
+	f.seed(configHome);
+	mkdirSync(join(stateHome, "financial-cli"), {
+		recursive: true,
+		mode: 0o700,
+	});
+	const sessionsPath = join(stateHome, "financial-cli/sessions.json");
+	const sessions = JSON.stringify([
+		{
+			sessionId: "11111111-1111-4111-8111-111111111111",
+			validUntil: "2099-01-01T00:00:00Z",
+			identity: "a".repeat(64),
+			bank: "Fixture Bank",
+			country: "FI",
+		},
+	]);
+	writeFileSync(sessionsPath, sessions, { mode: 0o600 });
+	return {
+		...f,
+		env: {
+			...f.env,
+			XDG_CONFIG_HOME: configHome,
+			XDG_STATE_HOME: stateHome,
+			FINANCIAL_CLI_TEST_MODE: "1",
+		},
+		firstLock: join(firstHome, "financial-cli/.auth-lock"),
+		secondDir: join(secondHome, "financial-cli"),
+		secondLock: join(secondHome, "financial-cli/.auth-lock"),
+		sessionsPath,
+		sessions,
+	};
+}
 
 const configureArgs = [
 	"auth",
