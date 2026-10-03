@@ -1,6 +1,6 @@
 # Financial CLI
 
-A personal, authentication-only Enable Banking CLI built with TypeScript, Bun, and Effect. It does not fetch transactions, generate reports, or initiate payments.
+A personal Enable Banking CLI for authentication, private transaction collection and typed local queries, built with TypeScript, Bun and Effect. It does not initiate payments.
 
 ## Setup
 
@@ -64,7 +64,7 @@ bun run start auth status
 bun run start auth status --country NL --bank EXACT_PROVIDER_BANK_NAME
 ```
 
-`--transactions consent` acknowledges read-only transaction access for local reporting. Balances remain disabled; no payments or transaction retrieval are implemented. Select a bank, open its authorization link privately, and complete the provider/bank consent screens yourself. Keep links, callback queries and session identifiers out of chat and issues.
+`--transactions consent` acknowledges read-only transaction access for local reporting. Balances remain disabled; payments are not requested. Select a bank, open its authorization link privately, and complete the provider/bank consent screens yourself. Keep links, callback queries and session identifiers out of chat and issues.
 
 Login requests the selected personal AIS connector's current validated `maximum_consent_validity`; the provider-returned expiry is saved exactly. Duration is not fixed at 180 days. The 300-second application signing JWT authenticates API requests independently of session expiry. Bank strong customer authentication (SCA), consent and revocation remain bank-controlled; access may end earlier.
 
@@ -89,6 +89,12 @@ tailscale serve status --json
 
 Compare the final configuration with the saved snapshot and preserve unrelated routes and exposure modes. Do not use `tailscale serve reset`. Retire policy routes and their local service only when no registered application still needs them. Remove verification snapshots and disposable fixture storage after review. Remove real local credentials only as an intentional retirement step; deleting local session files does not revoke provider or bank consent, which must be withdrawn through their supported controls.
 
+## Transaction collection and TypeScript API
+
+Read the [collection/query guide](docs/transactions/README.md) for the typed Effect API, CLI usage, reconciliation and freshness. Run `bun run example:transactions` for an [executable synthetic example](examples/synthetic-transactions.ts).
+
+Collection requires fresh transaction consent and current provider-reported access. Live acceptance awaits [policy deployment and owner verification](docs/transactions/data-processing.md#deployment-and-acceptance).
+
 ## Local data and security
 
 Default storage roots are `~/.financial-cli/config` and `~/.financial-cli/state`, so application directories are `~/.financial-cli/config/financial-cli` and `~/.financial-cli/state/financial-cli`. No XDG exports are needed. Explicit `$XDG_CONFIG_HOME` and `$XDG_STATE_HOME` override their respective roots independently, with `financial-cli` appended to each. The defaults avoid relying on permissions of `~/.config` or `~/.local`. Files are restricted to the current user and directories must be private. Storage rejects repository locations and symbolic links. Protect and back up local credentials separately from source control. Storage is permission-protected, not encrypted at rest.
@@ -102,6 +108,8 @@ Authentication commands take exclusive local `.auth-lock` files in the applicati
 Permission or path failures report unsafe storage access, not lock contention. Check the selected roots and their parent directories rather than deleting a lock.
 
 All storage ancestry must be owned by the current user or root and must not be group/world-writable. Tests need an owner-only scratch location with trusted ancestry. If your default temporary directory fails that check, create a private directory beneath your home and run checks with `TMPDIR` set to it. Do not relax credential security to accommodate a shared scratch path.
+
+Transaction records, revisions, provenance and coverage live in the private state directory as `transactions.json`. Sync writers use an exclusive `.transactions-lock` and retain the authentication lock while reading accounts. Queries read atomic local snapshots without opening credentials or calling a provider. Collection records do not automatically expire with consent; the owner must intentionally delete the transaction file and private backups to retire them.
 
 Writes are atomic replacements with temporary-file cleanup. This CLI does not claim power-loss durability or encryption at rest.
 

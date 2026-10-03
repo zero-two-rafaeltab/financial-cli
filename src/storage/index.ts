@@ -8,3 +8,4 @@ export type StorageLocations = {
 export { localStore } from "./local";
 export const storeLayer = (store: CredentialStore) =>
 	Layer.succeed(Store, store);
+export { localTransactionStore } from "./transactions";

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { runChild } from "./runtime-fixture";
 
 test("architecture check rejects outward application and cross-adapter imports", async () => {
 	const root = mkdtempSync(
@@ -14,14 +15,14 @@ test("architecture check rejects outward application and cross-adapter imports",
 			["provider", "storage"],
 		]) {
 			writeFileSync(join(root, from ?? "", "index.ts"), `import "../${to}";`);
-			const child = Bun.spawn(["bun", "src/architecture.ts", root], {
-				cwd: join(import.meta.dir, ".."),
-				stdout: "pipe",
-				stderr: "pipe",
-			});
-			await new Response(child.stdout).text();
-			const err = await new Response(child.stderr).text();
-			expect(await child.exited).toBe(1);
+			const { err, code } = await runChild(
+				["bun", "src/architecture.ts", root],
+				{
+					cwd: join(import.meta.dir, ".."),
+					env: { PATH: process.env.PATH },
+				},
+			);
+			expect(code).toBe(1);
 			expect(err).toContain("Dependency must point inward");
 			rmSync(join(root, from ?? "", "index.ts"));
 		}
@@ -30,28 +31,41 @@ test("architecture check rejects outward application and cross-adapter imports",
 	}
 });
 
-test("capability entry points and CLI imports reject private and infrastructure dependencies", async () => {
+test("architecture enforces nested capability dependency direction and public entry points", async () => {
 	const root = mkdtempSync(
 		join(process.env.TMPDIR ?? "/tmp", "financial-capability-architecture-"),
 	);
 	try {
-		for (const module of ["capabilities/authentication", "provider", "storage"])
-			mkdirSync(join(root, module), { recursive: true });
-		for (const [file, specifier] of [
-			["capabilities/authentication/workflow.ts", "../../provider"],
-			["capabilities/authentication/workflow.ts", "node:fs"],
-			["cli.ts", "./capabilities/authentication/workflow"],
-			["provider/index.ts", "../capabilities/authentication/contract"],
+		mkdirSync(join(root, "capabilities/transactions"), { recursive: true });
+		mkdirSync(join(root, "capabilities/authentication"), { recursive: true });
+		mkdirSync(join(root, "provider"));
+		mkdirSync(join(root, "tests"));
+		mkdirSync(join(root, "examples"));
+		for (const [path, source] of [
+			["capabilities/authentication/workflow.ts", 'import "../../provider";'],
+			["capabilities/authentication/workflow.ts", 'import "node:fs";'],
+			["cli.ts", 'import "./capabilities/authentication/workflow";'],
+			[
+				"provider/index.ts",
+				'import "../capabilities/authentication/contract";',
+			],
+			["capabilities/transactions/index.ts", 'import "node:fs";'],
+			["provider/index.ts", 'import "../capabilities/transactions/workflow";'],
+			["capabilities/transactions/index.ts", 'import "../../provider";'],
+			["cli.ts", 'import "./capabilities/transactions/workflow";'],
+			["tests/consumer.ts", 'import "../capabilities/transactions/contract";'],
+			[
+				"examples/demo.ts",
+				'import "../capabilities/transactions/reconciliation";',
+			],
 		]) {
-			writeFileSync(join(root, file ?? ""), `import "${specifier}";`);
-			const child = Bun.spawn(["bun", "src/architecture.ts", root], {
-				stdout: "pipe",
-				stderr: "pipe",
+			writeFileSync(join(root, path ?? ""), source ?? "");
+			const { code } = await runChild(["bun", "src/architecture.ts", root], {
+				cwd: join(import.meta.dir, ".."),
+				env: { PATH: process.env.PATH },
 			});
-			await new Response(child.stdout).text();
-			await new Response(child.stderr).text();
-			expect(await child.exited).toBe(1);
-			rmSync(join(root, file ?? ""));
+			expect(code).toBe(1);
+			rmSync(join(root, path ?? ""));
 		}
 	} finally {
 		rmSync(root, { recursive: true, force: true });
