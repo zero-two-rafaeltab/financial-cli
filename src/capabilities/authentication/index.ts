@@ -20,13 +20,6 @@ export type {
 	StatusEntry,
 	StatusQuery,
 	StoredSession,
-} from "../capabilities/authentication";
-export {
-	AuthError,
-	Callback,
-	login,
-	Provider,
-	State,
-	Store,
-	status,
-} from "../capabilities/authentication";
+} from "./contract";
+export { AuthError, Callback, Provider, State, Store } from "./contract";
+export { login, status } from "./workflow";

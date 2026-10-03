@@ -267,7 +267,30 @@ test("CLI help exposes only authentication commands", async () => {
 	expect(result.exit).toBe(0);
 	for (const command of ["keygen", "configure", "login", "status"])
 		expect(result.out).toContain(`auth ${command}`);
-	expect(result.out).not.toContain("transactions");
+	expect(result.out).not.toContain("auth transactions");
+	expect(result.out).toContain("--transactions consent");
+	expect(result.out).toContain("read-only transaction access");
+});
+
+test("CLI requires transaction acknowledgement before accessing credentials", async () => {
+	const f = fixture();
+	try {
+		const result = await run(["auth", "login"], f.env);
+		expect(result.exit).toBe(1);
+		expect(result.out).toBe("");
+		expect(result.err).toContain("requires acknowledgement");
+		expect(result.err).toContain("--transactions consent");
+		expect(existsSync(join(f.home, ".financial-cli"))).toBe(false);
+		const invalid = await run(
+			["auth", "login", "--transactions", "yes"],
+			f.env,
+		);
+		expect(invalid.exit).toBe(1);
+		expect(invalid.out).toBe("");
+		expect(existsSync(join(f.home, ".financial-cli"))).toBe(false);
+	} finally {
+		f.cleanup();
+	}
 });
 
 test("without XDG overrides commands reuse private defaults despite writable conventional roots", async () => {

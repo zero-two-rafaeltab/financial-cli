@@ -59,16 +59,26 @@ For a synthetic verification, use disposable keys, application configuration, an
 ### Login and consent renewal
 
 ```sh
-bun run start auth login --country NL
+bun run start auth login --transactions consent --country NL
 bun run start auth status
 bun run start auth status --country NL --bank EXACT_PROVIDER_BANK_NAME
 ```
+
+The `--transactions consent` acknowledgement requests read-only transaction access for local reporting. Balances remain disabled and no payment scope is requested. This CLI still does not retrieve transactions. Complete the provider and bank disclosures and consent screens yourself; the flag does not grant bank access.
 
 Login displays available banks for selection and prints a browser authorization link. Open that link and complete the provider and bank consent flow. Do not paste callback URLs, authorization codes, or session identifiers into chat or issues. Keep terminal output containing an authorization link private.
 
 A synthetic authorization test is not proof that a live account is connected. Validate registration, exact callback compatibility, linked-account availability, and the saved session with a real consent flow before relying on this CLI.
 
-The current login requests validity for at most 24 hours, further limited by the bank's advertised maximum; the provider's returned expiry governs the saved session. See Enable Banking's [access validity contract](https://enablebanking.com/docs/api/reference/#access). There is no automatic consent renewal. Use `auth status` to check the relevant bank, then run `auth login --country CC --bank EXACT_PROVIDER_BANK_NAME` and complete fresh consent when the session is expired, revoked, cancelled, closed, invalid, or missing. If status reports `provider-unavailable`, validity was not verified; check provider access before deciding to renew. Keep the registered callback and existing signing key. Renewal does not require `auth keygen` or application re-registration. Only a successful login replaces the matching bank's saved session; failed attempts preserve it and other banks' sessions.
+Each new login fetches the selected personal AIS connector's current `maximum_consent_validity` and requests that maximum, validated as positive whole seconds representable in RFC3339. There is no local 24-hour cap or hardcoded 180-day duration. The provider-returned expiry is saved exactly, even when it differs from the request. Historical [ING NL](https://enablebanking.com/blog/2024/03/11/changelog-february-2024) and [Revolut EU](https://enablebanking.com/blog/2024/12/05/changelog-november-2024) announcements describe 180-day support; current connector metadata governs. See the [access contract](https://enablebanking.com/docs/api/reference/#access).
+
+The application signing JWT still lasts 300 seconds and authenticates each API request. It does not determine bank consent or session expiry. Bank strong customer authentication (SCA) and owner consent are separate, bank-controlled steps; revocation or bank requirements may end access before the saved expiry. Enable Banking handles bank-token renewal internally, but an expired session requires [fresh owner authorization](https://enablebanking.com/docs/faq/#how-should-re-authorisation-be-performed-and-how-to-match-accounts-across-sessions). There is no local token refresh or automatic consent renewal.
+
+`auth status` shows safe expiry, its source, local versus provider verification, requested transaction rights, any provider-reported permission flags, and renewal guidance. Omitted flags are unknown, not proof of a grant. `provider-unavailable` means validity was not verified; check provider access before deciding to renew. An existing authentication-only record stays unchanged and requires fresh transaction consent even if its session remains authorized. Never edit its expiry or rights locally.
+
+Renew with `auth login --transactions consent --country CC --bank EXACT_PROVIDER_BANK_NAME`. Keep the registered callback and existing signing key; renewal requires neither key generation nor application re-registration. Only successful fresh consent replaces the matching bank's record. Denied, cancelled, failed, timed-out and interrupted attempts preserve all prior local sessions. An explicitly refused transaction grant also preserves them. Preservation of a local record cannot guarantee the bank still accepts it: some banks invalidate a previous session when a new authorization starts.
+
+For composable TypeScript/Effect use and the handoff to transaction collection (#17), see [the authentication capability API](docs/authentication-api.md). Owner-assisted checks for both real banks remain in [live acceptance](docs/consent-acceptance.md).
 
 ### Callback and deployment cleanup
 

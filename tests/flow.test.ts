@@ -822,6 +822,8 @@ async function fixture() {
 	};
 	const children: ReturnType<typeof Bun.spawn>[] = [];
 	const spawn = (args: string[], extra: Record<string, string> = {}) => {
+		// Existing synthetic flows explicitly acknowledge the new transaction scope.
+		if (args[1] === "login") args = [...args, "--transactions", "consent"];
 		const child = Bun.spawn(
 			[
 				"bun",
@@ -934,7 +936,7 @@ test("subprocess complete login uses signed provider contracts, local persistenc
 							name: "Fixture Bank",
 							psu_types: ["personal"],
 							country: "FI",
-							maximum_consent_validity: 3600,
+							maximum_consent_validity: 9_504_000,
 						},
 					],
 				});
@@ -943,10 +945,13 @@ test("subprocess complete login uses signed provider contracts, local persistenc
 				expect(body.aspsp).toEqual({ name: "Fixture Bank", country: "FI" });
 				expect(body.psu_type).toBe("personal");
 				expect(body.access.balances).toBe(false);
-				expect(body.access.transactions).toBe(false);
+				expect(body.access.transactions).toBe(true);
 				expect(
 					Date.parse(body.access.valid_until) - Date.now(),
-				).toBeLessThanOrEqual(3600_000);
+				).toBeLessThanOrEqual(9_504_000_000);
+				expect(
+					Date.parse(body.access.valid_until) - Date.now(),
+				).toBeGreaterThan(86400_000);
 				expect(body.redirect_url).toBe("https://fixture.test/callback");
 				expect(body.state).toMatch(/^[a-f0-9]{64}$/);
 				resolveAuth({ state: body.state });
@@ -959,6 +964,8 @@ test("subprocess complete login uses signed provider contracts, local persistenc
 					session_id: sessionId,
 					access: {
 						valid_until: new Date(Date.now() + 3600_000).toISOString(),
+						transactions: true,
+						balances: false,
 					},
 					accounts: [{ account_id: { iban: leak }, uid: id }],
 				});
@@ -1032,7 +1039,19 @@ test("subprocess complete login uses signed provider contracts, local persistenc
 		expect(statSync(path).mode & 0o777).toBe(0o600);
 		expect(
 			Object.keys(JSON.parse(readFileSync(path, "utf8"))[0]).sort(),
-		).toEqual(["bank", "country", "identity", "sessionId", "validUntil"]);
+		).toEqual([
+			"bank",
+			"country",
+			"identity",
+			"reportedAccess",
+			"requestedAccess",
+			"sessionId",
+			"validUntil",
+		]);
+		expect(JSON.parse(readFileSync(path, "utf8"))[0].reportedAccess).toEqual({
+			transactions: true,
+			balances: false,
+		});
 		expect(readFileSync(path, "utf8")).not.toContain(leak);
 		expect((await f.run(["auth", "status"], extra)).out).toContain(
 			"authorized",
@@ -1067,6 +1086,7 @@ test("malformed provider status is unavailable, never a leaked validation detail
 		port: 0,
 		fetch: () => Response.json({ status: leak, access: { valid_until: leak } }),
 	});
+
 	try {
 		await seed(f, `http://127.0.0.1:${server.port}`);
 		const result = await f.run(["auth", "status"], {
@@ -1080,6 +1100,48 @@ test("malformed provider status is unavailable, never a leaked validation detail
 		f.cleanup();
 	}
 }, 15000);
+
+test("CLI status shows current provider expiry and legacy consent without editing saved records", async () => {
+	const f = await fixture();
+	const server = Bun.serve({
+		hostname: "127.0.0.1",
+		port: 0,
+		fetch: () =>
+			Response.json({
+				status: "AUTHORIZED",
+				access: {
+					valid_until: "2098-05-06T07:08:09+02:00",
+					transactions: true,
+					balances: false,
+				},
+			}),
+	});
+	const endpoint = `http://127.0.0.1:${server.port}`;
+	try {
+		await seed(f, endpoint);
+		const before = readFileSync(sessionPath(f), "utf8");
+		const result = await f.run(["auth", "status"], {
+			FINANCIAL_CLI_TEST_API_URL: endpoint,
+		});
+		expect(result.exit).toBe(0);
+		expect(result.out).toContain(
+			"Expiry: 2098-05-06T07:08:09+02:00 (provider)",
+		);
+		expect(result.out).toContain("Verification: provider");
+		expect(result.out).toContain("Renewal: required");
+		expect(result.out).toContain(
+			"Transaction access: unknown; fresh consent required",
+		);
+		expect(result.out).toContain(
+			"Provider-reported transaction access: true; balances: false",
+		);
+		expect(result.out + result.err).not.toContain(sessionId);
+		expect(readFileSync(sessionPath(f), "utf8")).toBe(before);
+	} finally {
+		server.stop(true);
+		f.cleanup();
+	}
+});
 
 test("CLI distinguishes absent and locally expired sessions without provider calls", async () => {
 	const f = await fixture();

@@ -23,6 +23,7 @@ import {
 	decode,
 	failure,
 	SessionSchema,
+	Timestamp,
 	validateConfig,
 } from "../shared";
 import type { StorageLocations } from "./index";
@@ -35,6 +36,19 @@ const StoredSessionSchema = Schema.Struct({
 	),
 	bank: Schema.NonEmptyString,
 	country: Schema.String.check(Schema.makeFilter((s) => /^[A-Z]{2}$/.test(s))),
+	requestedAccess: Schema.optional(
+		Schema.Struct({
+			validUntil: Timestamp,
+			transactions: Schema.Literal(true),
+			balances: Schema.Literal(false),
+		}),
+	),
+	reportedAccess: Schema.optional(
+		Schema.Struct({
+			transactions: Schema.optional(Schema.Boolean),
+			balances: Schema.optional(Schema.Boolean),
+		}),
+	),
 });
 const SessionsSchema = Schema.Array(StoredSessionSchema);
 
