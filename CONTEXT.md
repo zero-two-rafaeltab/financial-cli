@@ -37,3 +37,11 @@ Exact flags, protocol fields, algorithms, storage formats, and provider endpoint
 ## Agreed test boundaries
 
 The initial work already authorizes CLI command tests, HTTP authorization and callback tests, invalid-state rejection, timeout behavior, provider failures, and secure credential storage. Test application decisions at capability interfaces; test wire formats, HTTP behavior, filesystem security, and subprocess behavior at the corresponding adapter or executable boundary. New boundaries or material scope changes need confirmation.
+
+## Read-only consent (#16)
+
+Authentication can request transaction access for the approved collection feature (#17), without retrieving transactions here. A fresh login requires explicit acknowledgement of that purpose and fresh owner/provider/bank consent; balances remain false and payments remain out of scope. Requested rights are distinct from provider-reported rights, and omitted provider flags remain unknown. Existing records have no new rights or duration through local migration.
+
+The authentication capability owns connector-maximum duration policy, safe typed login outcomes, expiry and renewal decisions. The CLI parses and renders the same public Effect operations. Connector maxima are current metadata, not a fixed six-month guarantee. Signing JWT lifetime, provider session expiry, bank SCA and owner renewal are separate concepts. Existing bank records survive unsuccessful local renewal; bank-side revocation remains provider-controlled.
+
+The owner approved the public `login(LoginInput)` and `status(StatusQuery)` seams, controlled capability ports and existing CLI/HTTP/storage boundaries for #16 on 2026-10-03. New collection and collection-storage seams belong to #17 and still require their own agreement. See [API contracts and compatibility](docs/authentication-api.md) and [live acceptance](docs/consent-acceptance.md).

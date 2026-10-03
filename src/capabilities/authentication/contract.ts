@@ -1,11 +1,54 @@
 import { Context, type Effect, type Scope } from "effect";
-import type { AuthError, Config, Session } from "../shared";
+import type { AuthError, Config, Session } from "../../shared";
 
-export type { AuthError, Config, Session } from "../shared";
+export type { Config, Session } from "../../shared";
+export { AuthError } from "../../shared";
 export type Bank = {
 	readonly name: string;
 	readonly country: string;
 	readonly maximumConsentValidity: number;
+};
+export type LoginInput = {
+	// Acknowledges read-only transaction access; bank authorization remains mandatory.
+	readonly transactionConsent?: "consent";
+	readonly endpoint: string;
+	readonly country?: string;
+	readonly bank?: string;
+	readonly timeoutSeconds: number;
+	readonly select: (banks: readonly Bank[]) => Effect.Effect<Bank, AuthError>;
+	// Sensitive authorization URLs belong only to this deliberate driving adapter.
+	readonly publishUrl: (url: string) => Effect.Effect<void>;
+};
+export type LoginResult =
+	| AuthorizedLogin
+	| { readonly outcome: "consent-required" }
+	| { readonly outcome: "denied" };
+export type AuthorizedLogin = {
+	readonly outcome: "authorized";
+	readonly bank: string;
+	readonly country: string;
+	readonly validUntil: string;
+	readonly maximumConsentValidity: number;
+	readonly requestedAccess: AuthorizationAccess;
+	readonly reportedAccess: ReportedAccess | null;
+};
+export type ReportedAccess = {
+	readonly transactions?: boolean;
+	readonly balances?: boolean;
+};
+export type AuthorizedSession = Session & {
+	readonly reportedAccess?: ReportedAccess;
+};
+// Requested rights, not a claim that the provider granted them.
+export type AuthorizationAccess = {
+	readonly validUntil: string;
+	readonly transactions: true;
+	readonly balances: false;
+};
+export type StatusQuery = {
+	readonly endpoint: string;
+	readonly country?: string;
+	readonly bank?: string;
 };
 export type RemoteStatus =
 	| "authorized"
@@ -17,16 +60,23 @@ export type RemoteStatus =
 	| "pending-authorization"
 	| "returned-from-bank"
 	| "revoked";
+export type RemoteSessionStatus = {
+	readonly status: RemoteStatus;
+	readonly validUntil?: string;
+	readonly reportedAccess?: ReportedAccess;
+};
 export type Snapshot = {
 	readonly config: Config;
 	readonly privateKey: string;
 	readonly identity: string;
 	readonly endpoint: string;
 };
-export type StoredSession = Session & {
+export type StoredSession = AuthorizedSession & {
 	readonly identity: string;
 	readonly bank: string;
 	readonly country: string;
+	// Present only after a fresh, successful authorization; absent for legacy records.
+	readonly requestedAccess?: AuthorizationAccess;
 };
 export interface BankingProvider {
 	readonly banks: () => Effect.Effect<readonly Bank[], AuthError>;
@@ -34,9 +84,14 @@ export interface BankingProvider {
 		config: Config,
 		bank: Bank,
 		state: string,
+		access: AuthorizationAccess,
 	) => Effect.Effect<string, AuthError>;
-	readonly exchange: (code: string) => Effect.Effect<Session, AuthError>;
-	readonly status: (session: Session) => Effect.Effect<RemoteStatus, AuthError>;
+	readonly exchange: (
+		code: string,
+	) => Effect.Effect<AuthorizedSession, AuthError>;
+	readonly status: (
+		session: Session,
+	) => Effect.Effect<RemoteSessionStatus, AuthError>;
 }
 export interface ProviderPort {
 	readonly connect: (
@@ -93,4 +148,11 @@ export type StatusEntry = {
 	readonly bank: string;
 	readonly country: string;
 	readonly status: RemoteStatus | "provider-unavailable";
+	readonly validUntil: string;
+	readonly expirySource: "saved" | "provider";
+	readonly verification: "local" | "provider" | "unavailable";
+	readonly renewal: "required" | "not-required" | "check-provider";
+	readonly requestedAccess: AuthorizationAccess | null;
+	readonly reportedAccess: ReportedAccess | null;
+	readonly accessSource: "provider" | "saved" | "unknown";
 };

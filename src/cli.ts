@@ -2,8 +2,8 @@ import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { Effect, Layer, Schema } from "effect";
-import { type Bank, login, status } from "./auth";
 import { callbackLayer } from "./callback";
+import { type Bank, login, status } from "./capabilities/authentication";
 import { enableBankingLayer } from "./provider";
 import { type AuthError, attempt, decode, failure } from "./shared";
 import { stateLayer } from "./state";
@@ -13,10 +13,13 @@ const help = `financial-cli — local account-information authentication
 
   auth keygen                         Create a local RSA key; print public certificate only
   auth configure --application-id ID --callback-url HTTPS_URL [--port 8787]
-  auth login [--country CC --bank NAME] [--timeout 180]
+  auth login --transactions consent [--country CC --bank NAME] [--timeout 180]
   auth status [--country CC --bank NAME] Validate saved sessions with Enable Banking
 
 Without --bank, select from Enable Banking's /aspsps list in the terminal.
+--transactions consent acknowledges read-only transaction access for local reporting.
+Complete fresh owner/bank consent; balances and payments are not requested.
+Consent expiry comes from the provider; renewal requires new bank authorization.
 Register the exact HTTPS callback URL and forward its path with Tailscale Serve
 to the configured loopback listener port. Credentials remain outside checkout
 in ~/.financial-cli/config/financial-cli and ~/.financial-cli/state/financial-cli.
@@ -47,7 +50,7 @@ else {
 					name === "configure"
 						? ["--application-id", "--callback-url", "--port"]
 						: name === "login"
-							? ["--country", "--bank", "--timeout"]
+							? ["--country", "--bank", "--timeout", "--transactions"]
 							: name === "status"
 								? ["--country", "--bank"]
 								: [];
@@ -128,6 +131,13 @@ else {
 			);
 			yield* Effect.sync(() => console.log("Configuration saved."));
 		} else if (command.name === "login") {
+			const transactionConsent =
+				command.options["--transactions"] === undefined
+					? undefined
+					: yield* decode(
+							Schema.Literal("consent"),
+							command.options["--transactions"],
+						);
 			const timeout = yield* decode(
 				Schema.Number.check(
 					Schema.makeFilter(
@@ -143,7 +153,8 @@ else {
 					Schema.String.check(Schema.makeFilter((s) => /^[A-Z]{2}$/.test(s))),
 					country,
 				);
-			const message = yield* login({
+			const result = yield* login({
+				transactionConsent,
 				endpoint,
 				country,
 				bank: command.options["--bank"],
@@ -156,7 +167,34 @@ else {
 						),
 					),
 			}).pipe(Effect.provide(services));
-			yield* Effect.sync(() => console.log(message));
+			yield* Effect.sync(() => {
+				switch (result.outcome) {
+					case "authorized":
+						console.log(
+							`Authorization saved. Valid until: ${result.validUntil}. Run auth status to validate it.`,
+						);
+						console.log(
+							`Maximum consent validity: ${result.maximumConsentValidity} seconds. Requested until: ${result.requestedAccess.validUntil}.`,
+						);
+						console.log(
+							"Transaction access: requested; balances: not requested; provider/bank grant governs.",
+						);
+						console.log(
+							`Provider-reported transaction access: ${result.reportedAccess?.transactions ?? "unknown"}; balances: ${result.reportedAccess?.balances ?? "unknown"}.`,
+						);
+						break;
+					case "consent-required":
+						console.error(
+							"Read-only transaction access requires acknowledgement. Use --transactions consent, then complete fresh bank consent. Balances and payments are not requested.",
+						);
+						process.exitCode = 1;
+						break;
+					case "denied":
+						console.error("Authorization was not completed.");
+						process.exitCode = 1;
+						break;
+				}
+			});
 		} else {
 			const result = yield* status({
 				endpoint,
@@ -165,7 +203,7 @@ else {
 			}).pipe(Effect.provide(services));
 			yield* Effect.sync(() => {
 				if (result.length === 0) console.log("Session: missing");
-				for (const entry of result)
+				for (const entry of result) {
 					console.log(
 						`${entry.country} ${Array.from(entry.bank)
 							.filter((char) => {
@@ -174,6 +212,19 @@ else {
 							})
 							.join("")}: ${entry.status}`,
 					);
+					console.log(`  Expiry: ${entry.validUntil} (${entry.expirySource})`);
+					console.log(
+						`  Verification: ${entry.verification}; Renewal: ${entry.renewal}`,
+					);
+					console.log(
+						entry.requestedAccess === null
+							? "  Transaction access: unknown; fresh consent required"
+							: "  Transaction access: requested; balances: not requested; provider/bank grant governs",
+					);
+					console.log(
+						`  Provider-reported transaction access: ${entry.reportedAccess?.transactions ?? "unknown"}; balances: ${entry.reportedAccess?.balances ?? "unknown"} (${entry.accessSource})`,
+					);
+				}
 				const states = result.map((s) => s.status);
 				process.exitCode = states.includes("provider-unavailable")
 					? 4
